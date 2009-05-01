@@ -50,7 +50,7 @@ int editor_realloclines(struct editor *e, int delta)
 	e->e_buf = realloc(e->e_buf, lines);
 	if (!e->e_buf)
 		return -1;
-	
+
 	if (lines > e->e_lines)
 		for (i = e->e_lines; i < lines; i++)
 			e->e_buf[i] = NULL;
