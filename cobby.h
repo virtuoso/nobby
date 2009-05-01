@@ -38,6 +38,32 @@ struct obbydoc {
 	unsigned od_nusers;
 };
 
+struct obbyevent {
+	int oe_type;
+	char *oe_docname;
+	char *oe_username;
+	char *oe_message;
+	/* to be extended */
+};
+
+enum {
+	OETYPE_NONE = 0,
+	OETYPE_USER_KNOWN,
+	OETYPE_USER_JOINED,
+	OETYPE_USER_PARTED,
+	OETYPE_DOC_KNOWN,
+	OETYPE_CHAT_MESSAGE,
+};
+
+typedef int (*obbysess_notify_callback_t)(void *, struct obbyevent *);
+
+#define obbysess_notify(__os, __type, __args...) \
+	do { \
+		struct obbyevent __oe = { .oe_type = __type, ## __args }; \
+		if (__os->os_notify_user) \
+			__os->os_notify_user(__os->os_notify_priv, &__oe); \
+	} while (0);
+
 struct obbysess {
 	int os_sock;
 	int os_type;
@@ -55,6 +81,10 @@ struct obbysess {
 
 	int os_edocs;  /* number of docs */
 	struct obbydoc *os_docs[MAX_DOCS];
+
+	/* user's callback */
+	obbysess_notify_callback_t os_notify_user;
+	void *os_notify_priv;
 };
 
 #define OS_ISOK(__os) ((__os)->os_state != OSSTATE_ERROR)
@@ -64,6 +94,9 @@ void obby_setmsgfn(void (*fn)(const char *, ...));
 struct obbysess *obbysess_create(const char *host, const char *port,
 		int type);
 void obbysess_destroy(struct obbysess *os);
+
+void obbysess_set_notify_callback(struct obbysess *os,
+		obbysess_notify_callback_t func, void *priv);
 
 void obbysess_do(struct obbysess *os);
 

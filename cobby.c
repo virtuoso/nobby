@@ -335,6 +335,7 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 	ou->ou_enctyped = enc;
 	ou->ou_obbyuid = oid;
 
+	obbysess_notify(os, OETYPE_USER_JOINED, .oe_username = ou->ou_name);
 	chat("--- %s has joined\n", ou->ou_name);
 
 	return 0;
@@ -353,6 +354,7 @@ static int net6_client_part_handler(struct obbysess *os, char *args)
 	ou->ou_obbyuid = -1;
 	ou->ou_enctyped = 0;
 
+	obbysess_notify(os, OETYPE_USER_PARTED, .oe_username = ou->ou_name);
 	chat("--- %s has parted\n", ou->ou_name);
 
 	return 0;
@@ -385,6 +387,8 @@ static int obby_sync_usertable_user_handler(struct obbysess *os, char *args)
 
 	os->os_users[os->os_eusers++] = ou;
 
+	obbysess_notify(os, OETYPE_USER_KNOWN, .oe_username = ou->ou_name);
+
 	return 0;
 }
 
@@ -416,6 +420,8 @@ static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 
 	od->od_encoding = enc;
 	os->os_docs[os->os_edocs++] = od;
+
+	obbysess_notify(os, OETYPE_DOC_KNOWN, .oe_docname = od->od_name);
 
 	return 0;
 }
@@ -459,7 +465,11 @@ static int obby_message_handler(struct obbysess *os, char *args)
 	}
 
 	p++;
-	chat("<%s> %s\n", ou->ou_name, p);
+
+	obbysess_notify(os, OETYPE_CHAT_MESSAGE,
+			.oe_username = ou->ou_name,
+			.oe_message = p
+			);
 
 	return 0;
 }
@@ -550,6 +560,8 @@ struct obbysess *obbysess_create(const char *host, const char *port,
 	memset(&os->os_users, 0, sizeof(os->os_users));
 	os->os_edocs = 0;
 	memset(&os->os_docs, 0, sizeof(os->os_docs));
+
+	os->os_notify_user = NULL;
 
 	return os;
 }
@@ -727,6 +739,13 @@ void obbysess_do(struct obbysess *os)
 void obbysess_join(struct obbysess *os, const char *nick, const char *color)
 {
 	obbysess_enqueue_command(os, "net6_client_login:%s:%s\n", nick, color);
+}
+
+void obbysess_set_notify_callback(struct obbysess *os,
+		obbysess_notify_callback_t func, void *priv)
+{
+	os->os_notify_user = func;
+	os->os_notify_priv = priv;
 }
 
 void obbysess_destroy(struct obbysess *os)

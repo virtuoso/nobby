@@ -113,7 +113,7 @@ void show_lists(struct obbysess *os)
 {
 	int i, y = 1;
 
-	//wclear(listwin);
+	werase(listwin);
 	mvwaddstr(listwin, y++, 1, "users:");
 
 	for (i = 0; i < os->os_eusers; i++) {
@@ -198,6 +198,30 @@ static void __chatout(const char *fmt, ...)
 	va_end(args);
 }
 
+static int __obby_notify_callback(void *priv, struct obbyevent *oe)
+{
+	int sn = (int)priv;
+	struct obbysess *os = sessions[sn]->s_obby;
+
+	switch (oe->oe_type) {
+		case OETYPE_USER_KNOWN:
+		case OETYPE_USER_JOINED:
+		case OETYPE_USER_PARTED:
+		case OETYPE_DOC_KNOWN:
+			show_lists(os);
+			break;
+
+		case OETYPE_CHAT_MESSAGE:
+			__chatout("<%s> %s\n", oe->oe_username, oe->oe_message);
+			break;
+
+		default:
+			break;
+	}
+
+	return 0;
+}
+
 struct session *session_create(int type, ...)
 {
 	struct session *s;
@@ -217,7 +241,13 @@ struct session *session_create(int type, ...)
 			service = va_arg(args, char *);
 			conntype = va_arg(args, int);
 			s->s_obby = obbysess_create(host, service, conntype);
-			break;
+			if (s->s_obby) {
+				obbysess_set_notify_callback(s->s_obby,
+						__obby_notify_callback,
+						(void *)nsessions);
+				break;
+			}
+			/* otherwise fall through */
 
 		default:
 			free(s);
