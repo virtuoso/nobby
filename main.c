@@ -38,8 +38,10 @@ static int nsessions, cursession;
 
 static const char my_name[] = "nobby";
 static const char my_version[] = "0.1";
-static const char *default_nick;
-static const char *default_color = "ffffff";
+static char *default_nick;
+static char *default_color;
+static const char *default_host;
+static const char *default_service;
 
 int nobby_state = 0;
 
@@ -158,7 +160,7 @@ void screen_init(void) {
 	banner();
 }
 
-static void update_display(int a, int b)
+static void update_display(void)
 {
 	curs_set(0);
 	wrefresh(screen);
@@ -249,11 +251,50 @@ struct session *session_current(void)
 	return sessions[cursession];
 }
 
+int session_get_fd(int sn)
+{
+	switch (sessions[sn]->s_type)
+	{
+		case STYPE_OBBY:
+			return sessions[sn]->s_obby->os_sock;
+
+		default:
+			break;
+	}
+
+	return -1;
+}
+
+int session_do(struct session *s)
+{
+	switch (s->s_type) {
+		case STYPE_OBBY:
+			obbysess_do(s->s_obby);
+			if (s->s_obby->os_state == OSSTATE_SHOOKHANDS) {
+				obbysess_join(s->s_obby, default_nick, default_color);
+				nobby_state = NSTATE_CONNECTED;
+			}
+			break;
+
+		default:
+			return -1;
+	}
+
+	return 0;
+}
+
+void sessions_do(void)
+{
+	int n;
+
+	for (n = 0; n < nsessions; n++)
+		(void)session_do(sessions[n]);
+}
+
 void cmd_execute(char *cmdbuf, void *d)
 {
 	struct session *s;
 	struct obbysess *os;
-	int cmdlen = strlen(cmdbuf);
 
 	s = session_current();
 	os = s ? s->s_obby : NULL;
@@ -262,7 +303,7 @@ void cmd_execute(char *cmdbuf, void *d)
 		default:
 			if (os)
 				obbysess_enqueue_command(os, "obby_message:%s\n",
-					cmdbuf);
+						cmdbuf);
 			break;
 
 		case '\0':
@@ -272,9 +313,23 @@ void cmd_execute(char *cmdbuf, void *d)
 			__dbgout("got command: %s\n", &cmdbuf[1]);
 			if (!strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
 			else if (os && !strncmp(&cmdbuf[1], "s ", 2)) {
-				cmdbuf[cmdlen++] = '\n';
-				cmdbuf[cmdlen++] = 0;
-				obbysess_enqueue_command(os, &cmdbuf[3]);
+			} else if (!strncmp(&cmdbuf[1], "nick ", 5)) {
+				free(default_nick);
+				default_nick = strdup(&cmdbuf[6]);
+			} else if (!strncmp(&cmdbuf[1], "color ", 6)) {
+				free(default_color);
+				default_color = strdup(&cmdbuf[7]);
+			} else if (
+					!strncmp(&cmdbuf[1], "connect ", 7) ||
+					!strncmp(&cmdbuf[1], "connect ", 8)
+				  ) {
+				s = session_create(STYPE_OBBY,
+						cmdbuf[8] ? &cmdbuf[9] : default_host,
+						default_service, OSTYPE_CLIENT);
+				if (!s) {
+					fprintf(stderr, "Can't create client connection to %s:%s\n",
+							default_host, default_service);
+				}
 			}
 			break;
 
@@ -321,11 +376,9 @@ static void usage(const char *msg, int exit_code)
 
 int main(int argc, char **argv)
 {
-	struct obbysess *os;
 	struct session *s;
-	int ch, loptidx, c;
-	char *host, *service;
-	struct pollfd fds[2];
+	int ch, loptidx, c, n = 0;
+	struct pollfd fds[MAX_SESSIONS];
 
 	for (;;) {
 		c = getopt_long(argc, argv, optstr, options, &loptidx);
@@ -352,9 +405,9 @@ int main(int argc, char **argv)
 	if (argc == optind)
 		usage("too few arguments", EXIT_FAILURE);
 
-	host = argv[optind++];
-	service = argv[optind++];
-	if (!host || !service)
+	default_host = argv[optind++];
+	default_service = argv[optind++];
+	if (!default_host || !default_service)
 		usage("too few arguments", EXIT_FAILURE);
 
 	if (!default_nick)
@@ -365,22 +418,13 @@ int main(int argc, char **argv)
 	if (!default_nick)
 		usage("can't determine your nickname", EXIT_FAILURE);
 
-	s = session_create(STYPE_OBBY, host, service, OSTYPE_CLIENT);
-	if (!s) {
-		fprintf(stderr, "Can't create client connection to %s:%s\n",
-				argv[1], argv[2]);
-		exit(EXIT_FAILURE);
-	}
+	if (!default_color)
+		default_color = strdup("ffffff");
 
-	os = s->s_obby;
 	obby_setdbgfn(__dbgout);
 	obby_setmsgfn(__chatout);
 
 	memset(&fds, 0, sizeof(fds));
-	fds[0].fd = 0;
-	fds[0].events = POLLIN;
-	fds[1].fd = os->os_sock;
-	fds[1].events = POLLIN;
 
 	screen_init();
 
@@ -390,20 +434,25 @@ int main(int argc, char **argv)
 
 	editor_addline(cmded, 0, 0, NULL, 0);
 
-	while (OS_ISOK(os) && nobby_state < NSTATE_LEAVING) {
-		obbysess_do(os);
+	while (nobby_state < NSTATE_LEAVING) {
+		sessions_do();
 
-		if (os->os_state == OSSTATE_SHOOKHANDS && nobby_state == 0) {
-			obbysess_join(os, default_nick, default_color);
-			nobby_state = NSTATE_CONNECTED;
-		}
-		update_display(os->os_state, nobby_state);
+		update_display();
 
-		show_lists(os);
+		/*show_lists(os);*/
+
 		ch = getch();
 		editor_gotchar(cmded, ch);
 
-		poll(fds, 2, 10);
+		if (!n) {
+			for (c = 0; c < nsessions; c++) {
+				fds[c].fd = session_get_fd(c);
+				fds[c].events = POLLIN;
+			}
+			fds[c].fd = 0;
+			fds[c].events = POLLIN;
+			n = poll(fds, c + 1, 100);
+		}
 	}
 	screen_end();
 
