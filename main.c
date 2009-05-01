@@ -123,6 +123,8 @@ void screen_init(void) {
 	raw();
 	keypad(stdscr, TRUE);
 	nodelay(mainwnd, TRUE);
+	meta(mainwnd, TRUE);
+	clearok(mainwnd, FALSE);
 	refresh();
 	wrefresh(mainwnd);
 
@@ -135,6 +137,7 @@ void screen_init(void) {
 			layout.debug_x);
 	cmdwin = newwin(layout.cmd_h, layout.cmd_w, layout.cmd_y,
 			layout.cmd_x);
+	leaveok(mainwnd, TRUE);
 	/*box(screen, ACS_VLINE, ACS_HLINE);
 	box(listwin, ACS_VLINE, ACS_HLINE);
 	box(dbgwin, ACS_VLINE, ACS_HLINE);*/
