@@ -14,6 +14,7 @@ struct editor *editor_create(WINDOW *win, void *priv);
 void editor_destroy(struct editor *e);
 int editor_addline(struct editor *e, int line, int pos, char *buf, unsigned f);
 int editor_killline(struct editor *e, int line, int pos, ssize_t len);
+int editor_gotchar(struct editor *e, int ch);
 
 #define MAX_SESSIONS 16
 
