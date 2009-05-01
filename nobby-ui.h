@@ -15,6 +15,24 @@ void editor_destroy(struct editor *e);
 int editor_addline(struct editor *e, int line, int pos, char *buf, unsigned f);
 int editor_killline(struct editor *e, int line, int pos, ssize_t len);
 
+#define MAX_SESSIONS 16
+
+struct session {
+	int s_type;
+	union {
+		struct obbysess *s_obby;
+	};
+};
+
+enum {
+	STYPE_NONE = 0,
+	STYPE_OBBY,
+};
+
+struct session *session_create(int type, ...);
+void session_destroy(struct session *s);
+struct session *session_current(void);
+
 extern int nobby_state;
 void cmd_execute(char *cmdbuf, void *os);
 

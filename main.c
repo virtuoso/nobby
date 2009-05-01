@@ -32,6 +32,9 @@ static WINDOW *cmdwin;
 
 static struct editor *cmded;
 
+static struct session *sessions[MAX_SESSIONS];
+static int nsessions, cursession;
+
 static const char my_name[] = "nobby";
 static const char my_version[] = "0.1";
 
@@ -190,14 +193,72 @@ static void __chatout(const char *fmt, ...)
 	va_end(args);
 }
 
+struct session *session_create(int type, ...)
+{
+	struct session *s;
+	va_list args;
+	char *host, *service;
+	int conntype;
+
+	s = malloc(sizeof(struct session));
+	if (!s)
+		return NULL;
+
+	va_start(args, type);
+	switch (type) {
+		case STYPE_OBBY:
+			/* host, service, connection type */
+			host = va_arg(args, char *);
+			service = va_arg(args, char *);
+			conntype = va_arg(args, int);
+			s->s_obby = obbysess_create(host, service, conntype);
+			break;
+
+		default:
+			free(s);
+			return NULL;
+	}
+	va_end(args);
+
+	s->s_type = type;
+
+	sessions[nsessions++] = s;
+	if (nsessions == 1)
+		cursession = 0;
+
+	return s;
+}
+
+void session_destroy(struct session *s)
+{
+	switch (s->s_type) {
+		case STYPE_OBBY:
+			obbysess_destroy(s->s_obby);
+			break;
+
+		default:
+			break;
+	}
+}
+
+struct session *session_current(void)
+{
+	return sessions[cursession];
+}
+
 void cmd_execute(char *cmdbuf, void *d)
 {
-	struct obbysess *os = d;
+	struct session *s;
+	struct obbysess *os;
 	int cmdlen = strlen(cmdbuf);
+
+	s = session_current();
+	os = s ? s->s_obby : NULL;
 
 	switch (cmdbuf[0]) {
 		default:
-			obbysess_enqueue_command(os, "obby_message:%s\n",
+			if (os)
+				obbysess_enqueue_command(os, "obby_message:%s\n",
 					cmdbuf);
 			break;
 
@@ -206,7 +267,7 @@ void cmd_execute(char *cmdbuf, void *d)
 
 		case ':':
 			__dbgout("got command: %s\n", &cmdbuf[1]);
-			if (!strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
+			if (os && !strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
 			else if (!strncmp(&cmdbuf[1], "s ", 2)) {
 				cmdbuf[cmdlen++] = '\n';
 				cmdbuf[cmdlen++] = 0;
@@ -225,19 +286,21 @@ void cmd_execute(char *cmdbuf, void *d)
 int main(int argc, const char *argv[])
 {
 	struct obbysess *os;
+	struct session *s;
 	int ch;
 	struct pollfd fds[2];
 
 	if (argc < 3)
 		exit(EXIT_FAILURE);
 
-	os = obbysess_create(argv[1], argv[2], OSTYPE_CLIENT);
-	if (!os) {
+	s = session_create(STYPE_OBBY, argv[1], argv[2], OSTYPE_CLIENT);
+	if (!s) {
 		fprintf(stderr, "Can't create client connection to %s:%s\n",
 				argv[1], argv[2]);
 		exit(EXIT_FAILURE);
 	}
 
+	os = s->s_obby;
 	obby_setdbgfn(__dbgout);
 	obby_setmsgfn(__chatout);
 
@@ -249,7 +312,7 @@ int main(int argc, const char *argv[])
 
 	screen_init();
 
-	cmded = editor_create(cmdwin, os);
+	cmded = editor_create(cmdwin, NULL);
 	if (!cmded)
 		exit(EXIT_FAILURE);
 
@@ -272,7 +335,7 @@ int main(int argc, const char *argv[])
 	}
 	screen_end();
 
-	obbysess_destroy(os);
+	session_destroy(s);
 
 	return 0;
 }
