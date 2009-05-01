@@ -11,6 +11,7 @@ endif
 SRCS := \
 	cobby.c \
 	lineedit.c \
+	commands.c \
 	main.c
 
 OBJS := $(SRCS:.c=.o)

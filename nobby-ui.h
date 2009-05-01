@@ -43,5 +43,20 @@ enum {
 	NSTATE_LEAVING,
 };
 
+extern struct editor *cmded;
+
+struct global_conf {
+	char *nick;
+	char *color;
+	const char *host;
+	const char *service;
+
+	int state;
+};
+
+extern struct global_conf G;
+
+void __dbgout(const char *fmt, ...);
+
 #endif /* __NOBBY_UI_H__ */
 

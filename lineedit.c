@@ -178,7 +178,7 @@ int editor_gotchar(struct editor *e, int ch)
 			break;
 
 		case KEY_F(10):
-			nobby_state = NSTATE_LEAVING;
+			G.state = NSTATE_LEAVING;
 			break;
 
 		case '\n':

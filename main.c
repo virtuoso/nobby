@@ -15,19 +15,15 @@ static WINDOW *dbgwin;
 static WINDOW *listwin;
 static WINDOW *cmdwin;
 
-static struct editor *cmded;
+struct editor *cmded;
 
 static struct session *sessions[MAX_SESSIONS];
 static int nsessions, cursession;
 
 static const char my_name[] = "nobby";
 static const char my_version[] = "0.1";
-static char *default_nick;
-static char *default_color;
-static const char *default_host;
-static const char *default_service;
 
-int nobby_state = 0;
+struct global_conf G;
 
 struct layout {
 	/* debug window: top or bottom */
@@ -159,7 +155,7 @@ void screen_end(void) {
 }
 
 /* for cobby to output it's diag() to our debug window */
-static void __dbgout(const char *fmt, ...)
+void __dbgout(const char *fmt, ...)
 {
 	va_list args;
 	FILE *f;
@@ -292,8 +288,8 @@ int session_do(struct session *s)
 		case STYPE_OBBY:
 			obbysess_do(s->s_obby);
 			if (s->s_obby->os_state == OSSTATE_SHOOKHANDS) {
-				obbysess_join(s->s_obby, default_nick, default_color);
-				nobby_state = NSTATE_CONNECTED;
+				obbysess_join(s->s_obby, G.nick, G.color);
+				G.state = NSTATE_CONNECTED;
 			}
 			break;
 
@@ -310,56 +306,6 @@ void sessions_do(void)
 
 	for (n = 0; n < nsessions; n++)
 		(void)session_do(sessions[n]);
-}
-
-void cmd_execute(char *cmdbuf, void *d)
-{
-	struct session *s;
-	struct obbysess *os;
-
-	s = session_current();
-	os = s ? s->s_obby : NULL;
-
-	switch (cmdbuf[0]) {
-		default:
-			if (os)
-				obbysess_enqueue_command(os, "obby_message:%s\n",
-						cmdbuf);
-			break;
-
-		case '\0':
-			break;
-
-		case ':':
-			__dbgout("got command: %s\n", &cmdbuf[1]);
-			if (!strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
-			else if (os && !strncmp(&cmdbuf[1], "s ", 2)) {
-			} else if (!strncmp(&cmdbuf[1], "nick ", 5)) {
-				free(default_nick);
-				default_nick = strdup(&cmdbuf[6]);
-			} else if (!strncmp(&cmdbuf[1], "color ", 6)) {
-				free(default_color);
-				default_color = strdup(&cmdbuf[7]);
-			} else if (
-					!strncmp(&cmdbuf[1], "connect ", 7) ||
-					!strncmp(&cmdbuf[1], "connect ", 8)
-				  ) {
-				s = session_create(STYPE_OBBY,
-						cmdbuf[8] ? &cmdbuf[9] : default_host,
-						default_service, OSTYPE_CLIENT);
-				if (!s) {
-					fprintf(stderr, "Can't create client connection to %s:%s\n",
-							default_host, default_service);
-				}
-			}
-			break;
-
-		case '/':
-			__dbgout("got pattern: %s\n", &cmdbuf[1]);
-			break;
-	}
-
-	editor_killline(cmded, 0, 0, -1);
 }
 
 static const struct option options[] = {
@@ -408,11 +354,11 @@ int main(int argc, char **argv)
 
 		switch (c) {
 			case 'n':
-				default_nick = strdup(optarg);
+				G.nick = strdup(optarg);
 				break;
 
 			case 'c':
-				default_color = strdup(optarg);
+				G.color = strdup(optarg);
 				break;
 
 			case 'h':
@@ -426,21 +372,21 @@ int main(int argc, char **argv)
 	if (argc == optind)
 		usage("too few arguments", EXIT_FAILURE);
 
-	default_host = argv[optind++];
-	default_service = argv[optind++];
-	if (!default_host || !default_service)
+	G.host = argv[optind++];
+	G.service = argv[optind++];
+	if (!G.host || !G.service)
 		usage("too few arguments", EXIT_FAILURE);
 
-	if (!default_nick)
-		default_nick = getenv("USER");
-	if (!default_nick)
-		default_nick = getenv("LOGNAME");
+	if (!G.nick)
+		G.nick = getenv("USER");
+	if (!G.nick)
+		G.nick = getenv("LOGNAME");
 
-	if (!default_nick)
+	if (!G.nick)
 		usage("can't determine your nickname", EXIT_FAILURE);
 
-	if (!default_color)
-		default_color = strdup("ffffff");
+	if (!G.color)
+		G.color = strdup("ffffff");
 
 	memset(&fds, 0, sizeof(fds));
 
@@ -452,12 +398,10 @@ int main(int argc, char **argv)
 
 	editor_addline(cmded, 0, 0, NULL, 0);
 
-	while (nobby_state < NSTATE_LEAVING) {
+	while (G.state < NSTATE_LEAVING) {
 		sessions_do();
 
 		update_display();
-
-		/*show_lists(os);*/
 
 		ch = getch();
 		editor_gotchar(cmded, ch);
