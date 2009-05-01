@@ -530,6 +530,25 @@ static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 
 /*
  * -- proto command --
+ * obby_document_create is to notify us that a document has been created
+ * sender: server
+ * args:
+ *  + obby user id of the creator;
+ *  + creator's document index number (as it was created);
+ *  + document name;
+ *  + number of users who have this document open;
+ *  + encoding of the document;
+ * no response expected
+ */
+static int obby_document_create_handler(struct obbysess *os, char *args)
+{
+	/* XXX: the effect is identical, thought we should doublecheck that
+	 * the document isn't yet registered within us */
+	return obby_sync_doclist_document_handler(os, args);
+}
+
+/*
+ * -- proto command --
  * obby_sync_final comes during the 'sync' exchange to conclude it
  * sender: server
  * args: none
@@ -607,6 +626,7 @@ static struct obby_command cmdlist[] = {
 	OBBY_CMD(obby_sync_doclist_document),
 	OBBY_CMD(obby_sync_final),
 	OBBY_CMD(obby_message),
+	OBBY_CMD(obby_document_create),
 };
 
 static int __obbysess_create_client(const char *host, const char *port)
@@ -697,7 +717,10 @@ static int parse_command(struct obbysess *os, char *cmd)
 		q = p + strlen(p);
 
 	for (i = 0; i < ARRSZ(cmdlist); i++)
-		if (!strncmp(p, cmdlist[i].oc_string, q - p))
+		if (
+			!strncmp(p, cmdlist[i].oc_string, q - p) &&
+			q - p == strlen(cmdlist[i].oc_string)
+		   )
 			return cmdlist[i].oc_handler(os, q + 1);
 
 	return -1;
