@@ -194,6 +194,14 @@ static int __obby_notify_callback(void *priv, struct obbyevent *oe)
 			show_lists(os);
 			break;
 
+		case OETYPE_DOC_OPEN:
+			__chatout("+++ opening %s\n", oe->oe_docname);
+			break;
+
+		case OETYPE_DOC_GETCHUNK:
+			__chatout("+++ HERE GOES:\n%s\n", oe->oe_message);
+			break;
+
 		case OETYPE_CHAT_MESSAGE:
 			__chatout("<%s> %s\n", oe->oe_username,
 					obby_unescape_string(oe->oe_message,

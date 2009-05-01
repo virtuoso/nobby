@@ -611,6 +611,76 @@ static int obby_message_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+static int __obby_document_sync_init(struct obbysess *os, unsigned oid,
+		unsigned oididx, char *args)
+{
+	long len;
+
+	len = strtol(args, NULL, 16);
+	diag(os, "expecting document %d bytes long\n", len);
+
+	obbysess_notify(os, OETYPE_DOC_OPEN,
+			.oe_docname = "hmhm",
+			.oe_length = len
+			);
+
+	return 0;
+}
+
+static int __obby_document_sync_chunk(struct obbysess *os, unsigned oid,
+		unsigned oididx, char *args)
+{
+	char *p = strrchr(args, ':');
+
+	if (!p) {
+		err(os, "malformed obby_document command: %s\n", args);
+		os->os_state = OSSTATE_ERROR;
+		return -1;
+	}
+
+	/* the number that follow should mean something. probably. */
+	*p++ = 0;
+
+	obbysess_notify(os, OETYPE_DOC_GETCHUNK,
+			.oe_docname = "hmhm",
+			.oe_message = obby_unescape_string(args, -1)
+			);
+
+	return 0;
+}
+
+static int obby_document_handler(struct obbysess *os, char *args)
+{
+	char *p, *what;
+	unsigned obbyuid, obbyuididx;
+	int n;
+
+	n = sscanf(args, "%u %u:%a[^:]:%a[^\n]\n",
+			&obbyuid,
+			&obbyuididx,
+			&what,
+			&p);
+	if (n != 4) {
+		err(os, "malformed obby_document command: %d, %s\n", n, args);
+		os->os_state = OSSTATE_ERROR;
+		return -1;
+	}
+
+	diag(os, "got %s for [%d:%d]: %s\n", what, obbyuid, obbyuididx, p);
+	if (!strcmp(what, "sync_init")) {
+		__obby_document_sync_init(os, obbyuid, obbyuididx, p);
+	} else if (!strcmp(what, "sync_chunk")) {
+		__obby_document_sync_chunk(os, obbyuid, obbyuididx, p);
+	} else {
+		diag(os, "%s is not implemented\n", what);
+	}
+
+	free(what);
+	free(p);
+
+	return 0;
+}
+
 #define OBBY_CMD(__s) \
 	{ .oc_string = # __s, .oc_handler = __s ## _handler }
 
@@ -627,6 +697,7 @@ static struct obby_command cmdlist[] = {
 	OBBY_CMD(obby_sync_final),
 	OBBY_CMD(obby_message),
 	OBBY_CMD(obby_document_create),
+	OBBY_CMD(obby_document),
 };
 
 static int __obbysess_create_client(const char *host, const char *port)
@@ -848,14 +919,30 @@ char *obby_unescape_string(const char *input, int replace)
 	while ((p = strchr(s, '\\')) != NULL) {
 		p++;
 
-		if (*p != 'd' && *p != 'b') {
+		if (p != __firstof(p, "dbn")) {
 			s++;
 			continue;
 		}
 
 		i += p - s - 1;
 		strncat(output, s, i);
-		output[i++] = *p == 'd' ? ':' : '\\';
+		switch (*p) {
+			case 'd':
+				output[i++] = ':';
+				break;
+
+			case 'b':
+				output[i++] = '\\';
+				break;
+
+			case 'n':
+				output[i++] = '\n';
+				break;
+
+			default:
+				break;
+		}
+
 		output[i] = 0;
 		s = ++p;
 	}

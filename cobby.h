@@ -43,6 +43,7 @@ struct obbyevent {
 	char *oe_docname;
 	char *oe_username;
 	char *oe_message;
+	long oe_length;
 	/* to be extended */
 };
 
@@ -52,6 +53,8 @@ enum {
 	OETYPE_USER_JOINED,
 	OETYPE_USER_PARTED,
 	OETYPE_DOC_KNOWN,
+	OETYPE_DOC_OPEN,
+	OETYPE_DOC_GETCHUNK,
 	OETYPE_CHAT_MESSAGE,
 	OETYPE_DEBUG_MESSAGE,
 };
