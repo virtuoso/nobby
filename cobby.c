@@ -818,16 +818,13 @@ void obbysess_do(struct obbysess *os)
 
 	for (;;) {
 		int s;
-		//diag(os, "=== 0 ");
 		buf = realloc(buf, len + BUFSIZ);
 		if (!buf) {
 			os->os_state = OSSTATE_ERROR;
 			return;
 		}
 
-		//diag(os, "=== 1 ");
 		s = __recv(os, buf + len, BUFSIZ);
-		//diag(os, "=== 2 ");
 		if (s < 0) {
 			if (!len) {
 				free(buf);
@@ -835,7 +832,6 @@ void obbysess_do(struct obbysess *os)
 			}
 			break;
 		}
-		//diag(os, "=== 3 ");
 
 		len += s;
 		buf[len] = 0;
@@ -844,7 +840,6 @@ void obbysess_do(struct obbysess *os)
 			break;
 	}
 
-	//diag(os, "=== 4\n");
 	os->os_inbuf = buf;
 
 	/* proceed to parse inbuf */
