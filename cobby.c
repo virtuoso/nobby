@@ -61,6 +61,27 @@ struct obby_command {
 	int (*oc_handler)(struct obbysess *, char *);
 };
 
+/*
+ * Protocol "commands": plain text messages with comma-separated
+ * operands that optionally (depending on the command) follow.
+ * There are generally 2 types of commands, distinguished by their
+ * prefixes:
+ *  - net6 -- those implemented in libnet6, which is some kind of
+ *            a networking layer wrapper for dummies writing in C++:
+ *            these generally deal with connecting, encrypting,
+ *            state of the connection etc.
+ *  - obby -- those implemented in libobby: these provide the
+ *            actual obbiness.
+ */
+/*
+ * -- proto command --
+ * obby_welcome is issued right after the socket is successfully
+ * opened;
+ * sender: server
+ * args:
+ *  + protocol version;
+ * no response expected
+ */
 static int obby_welcome_handler(struct obbysess *os, char *args)
 {
 	int v;
@@ -73,6 +94,19 @@ static int obby_welcome_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * net6_encryption is issued right after 'obby_welcome' to ask the
+ * peer to starttls
+ * sender: [theoretically] both
+ * args:
+ *  + 0 if requested by a server, 1 if requested by client;
+ * response:
+ *  + net6_encryption_ok if tls is supported,
+ *    otherwise net6_encryption_fail
+ * (I'm fairly sure that the most recent server will even accept
+ * the latter, though)
+ */
 static int net6_encryption_handler(struct obbysess *os, char *args)
 {
 	int p;
@@ -108,6 +142,15 @@ static ssize_t __recv(struct obbysess *os, void *data, size_t size)
 			: read(os->os_sock, data, size);
 }
 
+/*
+ * -- proto command --
+ * net6_encryption_begin is issued in response to net6_encryption_ok,
+ * to indicate that starttls should follow immediately
+ * sender: [theoretically] both
+ * args: none
+ * response:
+ *  + TLS handshake
+ */
 static int net6_encryption_begin_handler(struct obbysess *os, char *args)
 {
 	int n;
@@ -151,12 +194,31 @@ static int net6_encryption_begin_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * net6_ping is issued after the (I believe) 60 seconds of slience
+ * from the other end
+ * sender: [theoretically] both
+ * args: none
+ * response:
+ *  + net6_pong
+ */
 static int net6_ping_handler(struct obbysess *os, char *args)
 {
 	obbysess_enqueue_command(os, "net6_pong\n");
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * obby_sync_init is issued after the user has logged (joined)
+ * to communicate all known users and documents to him
+ * sender: server
+ * args:
+ *  + [theoretically] number of items (users and documents) that will
+ * follow, practice sometimes disagrees (will have to check obby sources)
+ * no response expected
+ */
 static int obby_sync_init_handler(struct obbysess *os, char *args)
 {
 	int nitems;
@@ -284,6 +346,21 @@ static void obbysess_free_docs(struct obbysess *os)
 	os->os_edocs = 0;
 }
 
+/*
+ * -- proto command --
+ * net6_client_join comes either in the 'sync' exchange or when a user
+ * joins
+ * sender: server
+ * args:
+ *  + net6 user id;
+ *  + username (nick);
+ *  + encryption (1/0);
+ *  + obby user id;
+ *  + color;
+ * no response expected
+ * (I strongly suspect that earlier versions of the protocol had a
+ * different set of arguments)
+ */
 static int net6_client_join_handler(struct obbysess *os, char *args)
 {
 	struct obbyuser *ou;
@@ -331,6 +408,14 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * net6_client_part is to indicate that a user has parted
+ * sender: server
+ * args:
+ *  + net6 user id;
+ * no response expected
+ */
 static int net6_client_part_handler(struct obbysess *os, char *args)
 {
 	struct obbyuser *ou;
@@ -349,6 +434,19 @@ static int net6_client_part_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * obby_sync_usertable_user comes during the 'sync' exchange to indicate
+ * that a user with certain name/color/uids/whatnot is known to a server
+ * sender: server
+ * args:
+ *  + net6 user id;
+ *  + username (nick);
+ *  + color;
+ * no response expected
+ * (I strongly suspect that earlier versions of the protocol had a
+ * different set of arguments)
+ */
 static int obby_sync_usertable_user_handler(struct obbysess *os, char *args)
 {
 	struct obbyuser *ou;
@@ -381,6 +479,21 @@ static int obby_sync_usertable_user_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * obby_sync_doclist_document comes during the 'sync' exchange to indicate that
+ * a document with certain name/encoding/whatnot exists on a server
+ * sender: server
+ * args:
+ *  + obby user id of the creator;
+ *  + creator's document index number (as it was created);
+ *  + document name;
+ *  + number of users who have this document open;
+ *  + encoding of the document;
+ * no response expected
+ * (I strongly suspect that earlier versions of the protocol had a
+ * different set of arguments)
+ */
 static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 {
 	struct obbydoc *od;
@@ -415,6 +528,13 @@ static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * obby_sync_final comes during the 'sync' exchange to conclude it
+ * sender: server
+ * args: none
+ * no response expected
+ */
 static int obby_sync_final_handler(struct obbysess *os, char *args)
 {
 	if (os->os_nitems != os->os_eusers + os->os_edocs) {
@@ -431,6 +551,15 @@ static int obby_sync_final_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+/*
+ * -- proto command --
+ * obby_message is to send a message to the common chatroom
+ * sender: both
+ * args:
+ *  + [only when sent by a server] obby user id of the sender
+ *  + message text
+ * no response expected
+ */
 static int obby_message_handler(struct obbysess *os, char *args)
 {
 	char *p = args;
