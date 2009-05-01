@@ -11,6 +11,18 @@
 #include <curses.h>
 #endif
 #include "cobby.h"
+#include "nobby-ui.h"
+
+#ifdef USE_SLANG
+#define meta(a, b) do {} while (0)
+#define vwprintw(__w, __fmt, __args) \
+	do { \
+		char *__buf; \
+		vasprintf(&__buf, __fmt, __args); \
+		waddstr(__w, __buf); \
+		free(__buf); \
+	} while (0);
+#endif
 
 static WINDOW *mainwnd;
 static WINDOW *screen;
@@ -18,19 +30,12 @@ static WINDOW *dbgwin;
 static WINDOW *listwin;
 static WINDOW *cmdwin;
 
+static struct editor *cmded;
+
 static const char my_name[] = "nobby";
 static const char my_version[] = "0.1";
 
-#define MAXCMD 256
-static char cmdbuf[MAXCMD];
-static int cmdlen;
-static int state = 0;
-
-enum {
-	NSTATE_NONE = 0,
-	NSTATE_CONNECTED,
-	NSTATE_LEAVING,
-};
+int nobby_state = 0;
 
 struct layout {
 	/* debug window: top or bottom */
@@ -161,16 +166,6 @@ void screen_end(void) {
 	endwin();
 }
 
-#ifdef USE_SLANG
-#define vwprintw(__w, __fmt, __args) \
-	do { \
-		char *__buf; \
-		vasprintf(&__buf, __fmt, __args); \
-		waddstr(__w, __buf); \
-		free(__buf); \
-	} while (0);
-#endif
-
 /* for cobby to output it's diag() to our debug window */
 static void __dbgout(const char *fmt, ...)
 {
@@ -195,9 +190,10 @@ static void __chatout(const char *fmt, ...)
 	va_end(args);
 }
 
-static void cmd_execute(struct obbysess *os)
+void cmd_execute(char *cmdbuf, void *d)
 {
-	cmdbuf[cmdlen] = 0;
+	struct obbysess *os = d;
+	int cmdlen = strlen(cmdbuf);
 
 	switch (cmdbuf[0]) {
 		default:
@@ -205,9 +201,12 @@ static void cmd_execute(struct obbysess *os)
 					cmdbuf);
 			break;
 
+		case '\0':
+			break;
+
 		case ':':
 			__dbgout("got command: %s\n", &cmdbuf[1]);
-			if (!strcmp(&cmdbuf[1], "q")) state = NSTATE_LEAVING;
+			if (!strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
 			else if (!strncmp(&cmdbuf[1], "s ", 2)) {
 				cmdbuf[cmdlen++] = '\n';
 				cmdbuf[cmdlen++] = 0;
@@ -220,8 +219,7 @@ static void cmd_execute(struct obbysess *os)
 			break;
 	}
 
-	cmdlen = 0;
-	cmdbuf[0] = 0;
+	editor_killline(cmded, 0, 0, -1);
 }
 
 int main(int argc, const char *argv[])
@@ -250,38 +248,25 @@ int main(int argc, const char *argv[])
 	fds[1].events = POLLIN;
 
 	screen_init();
-	while (OS_ISOK(os) && state < NSTATE_LEAVING) {
+
+	cmded = editor_create(cmdwin, os);
+	if (!cmded)
+		exit(EXIT_FAILURE);
+
+	editor_addline(cmded, 0, 0, NULL, 0);
+
+	while (OS_ISOK(os) && nobby_state < NSTATE_LEAVING) {
 		obbysess_do(os);
 
-		if (os->os_state == OSSTATE_SHOOKHANDS && state == 0) {
+		if (os->os_state == OSSTATE_SHOOKHANDS && nobby_state == 0) {
 			obbysess_join(os, "shisha", "ff0000");
-			state = NSTATE_CONNECTED;
+			nobby_state = NSTATE_CONNECTED;
 		}
-		update_display(os->os_state, state);
+		update_display(os->os_state, nobby_state);
 
 		show_lists(os);
 		ch = getch();
-
-		switch (ch) {
-			case ERR:
-				break;
-
-			case KEY_F(10):
-				state = NSTATE_LEAVING;
-				break;
-
-			case '\n':
-			case KEY_ENTER:
-				waddch(cmdwin, ch);
-				cmd_execute(os);
-				break;
-
-			default:
-				waddch(cmdwin, ch);
-				wrefresh(cmdwin);
-				cmdbuf[cmdlen++] = ch;
-				break;
-		}
+		editor_gotchar(cmded, ch);
 
 		poll(fds, 2, 10);
 	}

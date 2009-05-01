@@ -10,6 +10,7 @@ endif
 
 SRCS := \
 	cobby.c \
+	lineedit.c \
 	main.c
 
 OBJS := $(SRCS:.c=.o)
