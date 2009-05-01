@@ -5,25 +5,9 @@
 #include <sys/poll.h>
 #include <getopt.h>
 #include <gnutls/gnutls.h>
-#ifdef USE_SLANG
-#include <slang.h>
-#include <slcurses.h>
-#else
-#include <curses.h>
-#endif
+#include "curses.h"
 #include "cobby.h"
 #include "nobby-ui.h"
-
-#ifdef USE_SLANG
-#define meta(a, b) do {} while (0)
-#define vwprintw(__w, __fmt, __args) \
-	do { \
-		char *__buf; \
-		vasprintf(&__buf, __fmt, __args); \
-		waddstr(__w, __buf); \
-		free(__buf); \
-	} while (0);
-#endif
 
 static WINDOW *mainwnd;
 static WINDOW *screen;
