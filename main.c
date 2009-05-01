@@ -270,8 +270,8 @@ void cmd_execute(char *cmdbuf, void *d)
 
 		case ':':
 			__dbgout("got command: %s\n", &cmdbuf[1]);
-			if (os && !strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
-			else if (!strncmp(&cmdbuf[1], "s ", 2)) {
+			if (!strcmp(&cmdbuf[1], "q")) nobby_state = NSTATE_LEAVING;
+			else if (os && !strncmp(&cmdbuf[1], "s ", 2)) {
 				cmdbuf[cmdlen++] = '\n';
 				cmdbuf[cmdlen++] = 0;
 				obbysess_enqueue_command(os, &cmdbuf[3]);
