@@ -486,7 +486,8 @@ int main(int argc, char **argv)
 			fds[c].fd = 0;
 			fds[c].events = POLLIN;
 			n = poll(fds, c + 1, 100);
-		}
+		} else
+			n--;
 	}
 	screen_end();
 
