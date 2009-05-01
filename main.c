@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/poll.h>
+#include <getopt.h>
 #include <gnutls/gnutls.h>
 #ifdef USE_SLANG
 #include <slang.h>
@@ -37,6 +38,8 @@ static int nsessions, cursession;
 
 static const char my_name[] = "nobby";
 static const char my_version[] = "0.1";
+static const char *default_nick;
+static const char *default_color = "ffffff";
 
 int nobby_state = 0;
 
@@ -283,17 +286,86 @@ void cmd_execute(char *cmdbuf, void *d)
 	editor_killline(cmded, 0, 0, -1);
 }
 
-int main(int argc, const char *argv[])
+static const struct option options[] = {
+	{ "nick",               1, 0, 'n' },
+	{ "color",              1, 0, 'c' },
+	{ "help",               0, 0, 'h' },
+	{ NULL,                 0, 0, 0   },
+};
+
+static const char *options_desc[] = {
+	"specify your desired nickname",
+	"specify your desired color",
+	"print help message and exit",
+};
+
+static const char *optstr = "n:c:h";
+
+static void usage(const char *msg, int exit_code)
+{
+	int i;
+
+	if (msg)
+		fprintf(stderr, "Error: %s\n", msg);
+
+	fprintf(stderr, "Usage: %s [OPTIONS] host service\n"
+			"OPTIONS:\n", my_name);
+	for (i = 0; options[i].name; i++)
+		fprintf(stderr, "\t-%c, --%s\t%s\n",
+				options[i].val,
+				options[i].name,
+				options_desc[i]);
+
+	exit(exit_code);
+}
+
+int main(int argc, char **argv)
 {
 	struct obbysess *os;
 	struct session *s;
-	int ch;
+	int ch, loptidx, c;
+	char *host, *service;
 	struct pollfd fds[2];
 
-	if (argc < 3)
-		exit(EXIT_FAILURE);
+	for (;;) {
+		c = getopt_long(argc, argv, optstr, options, &loptidx);
+		if (c == -1)
+			break;
 
-	s = session_create(STYPE_OBBY, argv[1], argv[2], OSTYPE_CLIENT);
+		switch (c) {
+			case 'n':
+				default_nick = strdup(optarg);
+				break;
+
+			case 'c':
+				default_color = strdup(optarg);
+				break;
+
+			case 'h':
+				usage(NULL, EXIT_SUCCESS);
+
+			default:
+				usage("invalid arguments", EXIT_FAILURE);
+		}
+	}
+
+	if (argc == optind)
+		usage("too few arguments", EXIT_FAILURE);
+
+	host = argv[optind++];
+	service = argv[optind++];
+	if (!host || !service)
+		usage("too few arguments", EXIT_FAILURE);
+
+	if (!default_nick)
+		default_nick = getenv("USER");
+	if (!default_nick)
+		default_nick = getenv("LOGNAME");
+
+	if (!default_nick)
+		usage("can't determine your nickname", EXIT_FAILURE);
+
+	s = session_create(STYPE_OBBY, host, service, OSTYPE_CLIENT);
 	if (!s) {
 		fprintf(stderr, "Can't create client connection to %s:%s\n",
 				argv[1], argv[2]);
@@ -322,7 +394,7 @@ int main(int argc, const char *argv[])
 		obbysess_do(os);
 
 		if (os->os_state == OSSTATE_SHOOKHANDS && nobby_state == 0) {
-			obbysess_join(os, "shisha", "ff0000");
+			obbysess_join(os, default_nick, default_color);
 			nobby_state = NSTATE_CONNECTED;
 		}
 		update_display(os->os_state, nobby_state);
