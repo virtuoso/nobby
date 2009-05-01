@@ -19,9 +19,12 @@ void cmd_execute(char *cmdbuf, void *d)
 
 	switch (cmdbuf[0]) {
 		default:
-			if (os)
+			if (os) {
+				char *msg = obby_escape_string(cmdbuf, 0);
 				obbysess_enqueue_command(os, "obby_message:%s\n",
-						cmdbuf);
+						msg);
+				free(msg);
+			}
 			break;
 
 		case '\0':

@@ -753,6 +753,109 @@ static void send_outbuf(struct obbysess *os)
 	os->os_outbuf = NULL;
 }
 
+/*
+ * obby seems to escape colons with "\d" string, backslash with "\b"
+ * for some reason I might find in their code; do so here
+ *
+ * note: gobby begins to crap itself when receives strings like '\\\d',
+ *       someone please tell them that might be exploitable!
+ * glibc 2.10 promises to have printf hooks, though;
+ * I find it somewhat ugly to force users to call this
+ */
+static const char *__firstof(const char *buf, const char *d)
+{
+	int n;
+	const char *min = buf + strlen(buf);
+	char *cur;
+
+	for (n = 0; n < strlen(d); n++) {
+		cur = strchr(buf, d[n]);
+		if (cur && cur < min)
+			min = cur;
+	}
+
+	return (min == strlen(buf) + buf ? NULL : min);
+}
+
+char *obby_escape_string(const char *input, int replace)
+{
+	char *output;
+	const char *p, *s = input;
+	int i = 0;
+
+	/* to not realloc() needlessly */
+	output = malloc(strlen(input) * 2 + 1);
+	if (!output)
+		return NULL;
+
+	*output = 0;
+	while ((p = __firstof(s, "\\:")) != NULL) {
+		i += p - s;
+		strncat(output, s, i);
+		output[i++] = '\\';
+		output[i++] = *p == '\\' ? 'b' : 'd';
+		output[i] = 0;
+		s = p + 1;
+	}
+
+	if (*s)
+		strcat(output, s);
+
+	if (replace)
+		free((char *)input);
+
+	return output;
+}
+
+/*
+ * replace == -1 will stand for 'inplace'
+ */
+char *obby_unescape_string(const char *input, int replace)
+{
+	char *output;
+	const char *p, *s = input;
+	int i = 0;
+
+	/* to not realloc() needlessly */
+	output = malloc(strlen(input) + 1);
+	if (!output)
+		return NULL;
+
+	*output = 0;
+	while ((p = strchr(s, '\\')) != NULL) {
+		p++;
+
+		if (*p != 'd' && *p != 'b') {
+			s++;
+			continue;
+		}
+
+		i += p - s - 1;
+		strncat(output, s, i);
+		output[i++] = *p == 'd' ? ':' : '\\';
+		output[i] = 0;
+		s = ++p;
+	}
+
+	if (*s)
+		strcat(output, s);
+
+	switch (replace) {
+		case -1:
+			strcpy((char *)input, output);
+			free(output);
+			return (char *)input;
+
+		case 0:
+			break;
+
+		default:
+			free((char *)input);
+	}
+
+	return output;
+}
+
 void obbysess_enqueue_command(struct obbysess *os, const char *fmt, ...)
 {
 	va_list args;

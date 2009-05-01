@@ -195,7 +195,9 @@ static int __obby_notify_callback(void *priv, struct obbyevent *oe)
 			break;
 
 		case OETYPE_CHAT_MESSAGE:
-			__chatout("<%s> %s\n", oe->oe_username, oe->oe_message);
+			__chatout("<%s> %s\n", oe->oe_username,
+					obby_unescape_string(oe->oe_message,
+						-1));
 			break;
 
 		case OETYPE_DEBUG_MESSAGE:

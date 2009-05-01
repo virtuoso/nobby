@@ -90,6 +90,9 @@ struct obbysess {
 
 #define OS_ISOK(__os) ((__os)->os_state != OSSTATE_ERROR)
 
+char *obby_escape_string(const char *input, int replace);
+char *obby_unescape_string(const char *input, int replace);
+
 struct obbysess *obbysess_create(const char *host, const char *port,
 		int type);
 void obbysess_destroy(struct obbysess *os);
