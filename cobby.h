@@ -53,6 +53,7 @@ enum {
 	OETYPE_USER_PARTED,
 	OETYPE_DOC_KNOWN,
 	OETYPE_CHAT_MESSAGE,
+	OETYPE_DEBUG_MESSAGE,
 };
 
 typedef int (*obbysess_notify_callback_t)(void *, struct obbyevent *);
@@ -89,8 +90,6 @@ struct obbysess {
 
 #define OS_ISOK(__os) ((__os)->os_state != OSSTATE_ERROR)
 
-void obby_setdbgfn(void (*fn)(const char *, ...));
-void obby_setmsgfn(void (*fn)(const char *, ...));
 struct obbysess *obbysess_create(const char *host, const char *port,
 		int type);
 void obbysess_destroy(struct obbysess *os);

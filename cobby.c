@@ -12,20 +12,15 @@
 #include "cobby.h"
 
 #if 1
-#define diag(__s, __a...) \
+#define diag(__os, __s, __a...) \
 	do { \
-		dbgfn("%s(): " __s, __FUNCTION__, ## __a); \
+		dbgfn(__os, "%s(): " __s, __FUNCTION__, ## __a); \
 	} while (0);
 #else
-#define diag(__s, __a...) do {} while (0)
+#define diag(__os, __s, __a...) do {} while (0)
 #endif
 
-#define err(__s, __a...) diag(__s, ## __a)
-
-#define chat(__s, __a...) \
-	do { \
-		if (msgfn) msgfn(__s, ## __a); \
-	} while (0);
+#define err(__os, __s, __a...) diag(__os, __s, ## __a)
 
 static int __obbysess_create_client(const char *host, const char *port);
 static int parse_command(struct obbysess *os, char *cmd);
@@ -43,27 +38,23 @@ static struct obbydoc *obbydoc_create(struct obbysess *os, char *name,
 		unsigned obbyuid, unsigned obbyuididx, unsigned nusers);
 static void obbydoc_free(struct obbydoc *od);
 
-static void __dbgout(const char *fmt, ...)
+static void __dbgout(struct obbysess *os, const char *fmt, ...)
 {
 	va_list args;
+	char *msg;
 
 	va_start(args, fmt);
-	fprintf(stderr, fmt, args);
+	if (!os || !os->os_notify_user || vasprintf(&msg, fmt, args) == -1)
+		fprintf(stderr, fmt, args);
+	else {
+		obbysess_notify(os, OETYPE_DEBUG_MESSAGE,
+				.oe_message = msg);
+		free(msg);
+	}
 	va_end(args);
 }
 
-static void (*dbgfn)(const char *, ...) = __dbgout;
-static void (*msgfn)(const char *, ...) = NULL;
-
-void obby_setdbgfn(void (*fn)(const char *, ...))
-{
-	dbgfn = fn;
-}
-
-void obby_setmsgfn(void (*fn)(const char *, ...))
-{
-	msgfn = fn;
-}
+static void (*dbgfn)(struct obbysess *, const char *, ...) = __dbgout;
 
 struct obby_command {
 	const char *oc_string;
@@ -75,7 +66,7 @@ static int obby_welcome_handler(struct obbysess *os, char *args)
 	int v;
 
 	v = atoi(args);
-	diag("protocol version %d\n", v);
+	diag(os, "protocol version %d\n", v);
 
 	os->os_proto = v;
 
@@ -89,13 +80,13 @@ static int net6_encryption_handler(struct obbysess *os, char *args)
 	p = atoi(args);
 
 	if (os->os_type == OSTYPE_CLIENT && p == 0) {
-		diag("server requests encryption\n");
+		diag(os, "server requests encryption\n");
 
 		obbysess_enqueue_command(os, "net6_encryption_ok\n");
 	} else if (os->os_type == OSTYPE_SERVER && p == 1) {
-		diag("client requests encryption\n");
+		diag(os, "client requests encryption\n");
 	} else {
-		diag("invalid encryption request\n");
+		diag(os, "invalid encryption request\n");
 		os->os_state = OSSTATE_ERROR;
 		return -1;
 	}
@@ -123,7 +114,7 @@ static int net6_encryption_begin_handler(struct obbysess *os, char *args)
 	const int kx_prio[] = { GNUTLS_KX_ANON_DH, 0 };
 
 	if (os->os_type == OSTYPE_CLIENT) {
-		diag("starting client tls session\n");
+		diag(os, "starting client tls session\n");
 		gnutls_global_init();
 
 		gnutls_anon_allocate_client_credentials(&os->os_anoncred);
@@ -142,18 +133,18 @@ static int net6_encryption_begin_handler(struct obbysess *os, char *args)
 		} while (n == GNUTLS_E_INTERRUPTED || n == GNUTLS_E_AGAIN);
 
 		if (n < 0) {
-			err("TLS handshake failed: %d\n", n);
+			err(os, "TLS handshake failed: %d\n", n);
 			gnutls_perror(n);
 			perror("gnutls");
 			os->os_state = OSSTATE_ERROR;
 			return -1;
 		}
 
-		diag("TLS handshake succeeded\n");
+		diag(os, "TLS handshake succeeded\n");
 		os->os_flags |= OSFLAG_ENCRYPTED;
 		os->os_state = OSSTATE_SHOOKHANDS;
 	} else {
-		diag("server encryption -- not implemented\n");
+		diag(os, "server encryption -- not implemented\n");
 		return -1;
 	}
 
@@ -173,7 +164,7 @@ static int obby_sync_init_handler(struct obbysess *os, char *args)
 	os->os_state = OSSTATE_JOINED;
 
 	nitems = atoi(args);
-	diag("expecting %d users\n", nitems);
+	diag(os, "expecting %d users\n", nitems);
 
 	os->os_nitems = nitems;
 	memset(&os->os_users, 0, sizeof(os->os_users));
@@ -307,7 +298,7 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 			&oid,
 			&color);
 	if (n != 5) {
-		err("malformed join command: %d, %s\n", n, args);
+		err(os, "malformed join command: %d, %s\n", n, args);
 		os->os_state = OSSTATE_ERROR;
 		return -1;
 	}
@@ -336,7 +327,6 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 	ou->ou_obbyuid = oid;
 
 	obbysess_notify(os, OETYPE_USER_JOINED, .oe_username = ou->ou_name);
-	chat("--- %s has joined\n", ou->ou_name);
 
 	return 0;
 }
@@ -347,7 +337,7 @@ static int net6_client_part_handler(struct obbysess *os, char *args)
 
 	ou = obbyuser_find_by_nid(os, args);
 	if (!ou) {
-		err("user %s never existed\n", args);
+		err(os, "user %s never existed\n", args);
 		return -1;
 	}
 
@@ -355,7 +345,6 @@ static int net6_client_part_handler(struct obbysess *os, char *args)
 	ou->ou_enctyped = 0;
 
 	obbysess_notify(os, OETYPE_USER_PARTED, .oe_username = ou->ou_name);
-	chat("--- %s has parted\n", ou->ou_name);
 
 	return 0;
 }
@@ -371,7 +360,7 @@ static int obby_sync_usertable_user_handler(struct obbysess *os, char *args)
 			&name,
 			&color);
 	if (n != 3) {
-		err("malformed sync command: %d, %s\n", n, args);
+		err(os, "malformed sync command: %d, %s\n", n, args);
 		os->os_state = OSSTATE_ERROR;
 		return -1;
 	}
@@ -407,7 +396,7 @@ static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 			&nusers,
 			&enc);
 	if (n != 5) {
-		err("malformed sync command: %d, %s\n", n, args);
+		err(os, "malformed sync command: %d, %s\n", n, args);
 		os->os_state = OSSTATE_ERROR;
 		return -1;
 	}
@@ -429,7 +418,7 @@ static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 static int obby_sync_final_handler(struct obbysess *os, char *args)
 {
 	if (os->os_nitems != os->os_eusers + os->os_edocs) {
-		err("invalid number of items given: %d, "
+		err(os, "invalid number of items given: %d, "
 				"received: %d\n", os->os_nitems,
 				os->os_eusers + os->os_edocs);
 		os->os_state = OSSTATE_ERROR;
@@ -449,7 +438,7 @@ static int obby_message_handler(struct obbysess *os, char *args)
 	int uid;
 
 	if (!*p) {
-		err("malformed message\n");
+		err(os, "malformed message\n");
 		os->os_state = OSSTATE_ERROR;
 		return -1;
 	}
@@ -459,7 +448,7 @@ static int obby_message_handler(struct obbysess *os, char *args)
 
 	p = strchr(p, ':');
 	if (!p || !ou) {
-		err("malformed message\n");
+		err(os, "malformed message\n");
 		os->os_state = OSSTATE_ERROR;
 		return -1;
 	}
@@ -573,7 +562,7 @@ static int parse_command(struct obbysess *os, char *cmd)
 	char *p = cmd, *q;
 	int i;
 
-	diag("got command: '%s'\n", cmd);
+	diag(os, "got command: '%s'\n", cmd);
 	q = strchr(p, ':');
 	if (!q)
 		q = p + strlen(p);
@@ -660,7 +649,7 @@ void obbysess_enqueue_command(struct obbysess *os, const char *fmt, ...)
 	} else
 		os->os_outbuf = cmd;
 
-	diag("outbuf: '%s'\n", os->os_outbuf);
+	diag(os, "outbuf: '%s'\n", os->os_outbuf);
 }
 
 void obbysess_do(struct obbysess *os)
@@ -670,15 +659,15 @@ void obbysess_do(struct obbysess *os)
 
 	switch (os->os_state) {
 		default:
-			diag("bad session state\n");
+			diag(os, "bad session state\n");
 			return;
 
 		case OSSTATE_NONE:
-			diag("session closed\n");
+			diag(os, "session closed\n");
 			return;
 
 		case OSSTATE_ERROR:
-			diag("session at fault\n");
+			diag(os, "session at fault\n");
 			return;
 
 		case OSSTATE_SYNCED:
@@ -700,16 +689,16 @@ void obbysess_do(struct obbysess *os)
 
 	for (;;) {
 		int s;
-		//diag("=== 0 ");
+		//diag(os, "=== 0 ");
 		buf = realloc(buf, len + BUFSIZ);
 		if (!buf) {
 			os->os_state = OSSTATE_ERROR;
 			return;
 		}
 
-		//diag("=== 1 ");
+		//diag(os, "=== 1 ");
 		s = __recv(os, buf + len, BUFSIZ);
-		//diag("=== 2 ");
+		//diag(os, "=== 2 ");
 		if (s < 0) {
 			if (!len) {
 				free(buf);
@@ -717,7 +706,7 @@ void obbysess_do(struct obbysess *os)
 			}
 			break;
 		}
-		//diag("=== 3 ");
+		//diag(os, "=== 3 ");
 
 		len += s;
 		buf[len] = 0;
@@ -726,7 +715,7 @@ void obbysess_do(struct obbysess *os)
 			break;
 	}
 
-	//diag("=== 4\n");
+	//diag(os, "=== 4\n");
 	os->os_inbuf = buf;
 
 	/* proceed to parse inbuf */

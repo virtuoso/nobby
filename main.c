@@ -204,15 +204,22 @@ static int __obby_notify_callback(void *priv, struct obbyevent *oe)
 	struct obbysess *os = sessions[sn]->s_obby;
 
 	switch (oe->oe_type) {
-		case OETYPE_USER_KNOWN:
 		case OETYPE_USER_JOINED:
 		case OETYPE_USER_PARTED:
+			__chatout("--- %s has %sed\n", oe->oe_username,
+					oe->oe_type == OETYPE_USER_JOINED
+					? "join" : "part");
+		case OETYPE_USER_KNOWN:
 		case OETYPE_DOC_KNOWN:
 			show_lists(os);
 			break;
 
 		case OETYPE_CHAT_MESSAGE:
 			__chatout("<%s> %s\n", oe->oe_username, oe->oe_message);
+			break;
+
+		case OETYPE_DEBUG_MESSAGE:
+			__dbgout(oe->oe_message);
 			break;
 
 		default:
@@ -450,9 +457,6 @@ int main(int argc, char **argv)
 
 	if (!default_color)
 		default_color = strdup("ffffff");
-
-	obby_setdbgfn(__dbgout);
-	obby_setmsgfn(__chatout);
 
 	memset(&fds, 0, sizeof(fds));
 
