@@ -27,15 +27,17 @@ static int parse_command(struct obbysess *os, char *cmd);
 static void parse_inbuf(struct obbysess *os);
 static void send_outbuf(struct obbysess *os);
 static struct obbyuser *obbyuser_create(struct obbysess *os, char *name,
-		char *net6uid, long color);
-static struct obbyuser *obbyuser_find(struct obbysess *os, unsigned uid);
+		unsigned long net6uid, long color);
+static struct obbyuser *obbyuser_find(struct obbysess *os, unsigned long uid);
 static struct obbyuser *obbyuser_find_by_name(struct obbysess *os, char *name);
-static struct obbyuser *obbyuser_find_by_nid(struct obbysess *os, char *nid);
+static struct obbyuser *obbyuser_find_by_nid(struct obbysess *os,
+		unsigned long nid);
 static void obbyuser_free(struct obbyuser *ou);
 static void obbysess_free_docs(struct obbysess *os);
 static void obbysess_free_users(struct obbysess *os);
 static struct obbydoc *obbydoc_create(struct obbysess *os, char *name,
-		unsigned obbyuid, unsigned obbyuididx, unsigned nusers);
+		unsigned long obbyuid, unsigned long obbyuididx,
+		unsigned nusers);
 static void obbydoc_free(struct obbydoc *od);
 
 static void __dbgout(struct obbysess *os, const char *fmt, ...)
@@ -84,9 +86,9 @@ struct obby_command {
  */
 static int obby_welcome_handler(struct obbysess *os, char *args)
 {
-	int v;
+	unsigned long v;
 
-	v = atoi(args);
+	v = strtoul(args, NULL, 16);
 	diag(os, "protocol version %d\n", v);
 
 	os->os_proto = v;
@@ -109,9 +111,9 @@ static int obby_welcome_handler(struct obbysess *os, char *args)
  */
 static int net6_encryption_handler(struct obbysess *os, char *args)
 {
-	int p;
+	unsigned long p;
 
-	p = atoi(args);
+	p = strtol(args, NULL, 16);
 
 	if (os->os_type == OSTYPE_CLIENT && p == 0) {
 		diag(os, "server requests encryption\n");
@@ -216,16 +218,15 @@ static int net6_ping_handler(struct obbysess *os, char *args)
  * sender: server
  * args:
  *  + [theoretically] number of items (users and documents) that will
- * follow, practice sometimes disagrees (will have to check obby sources)
- * no response expected
+ * follow
  */
 static int obby_sync_init_handler(struct obbysess *os, char *args)
 {
-	int nitems;
+	unsigned long nitems;
 
 	os->os_state = OSSTATE_JOINED;
 
-	nitems = atoi(args);
+	nitems = strtol(args, NULL, 16);
 	diag(os, "expecting %d users\n", nitems);
 
 	os->os_nitems = nitems;
@@ -235,7 +236,7 @@ static int obby_sync_init_handler(struct obbysess *os, char *args)
 }
 
 static struct obbyuser *obbyuser_create(struct obbysess *os, char *name,
-		char *net6uid, long color)
+		unsigned long net6uid, long color)
 {
 	struct obbyuser *ou;
 
@@ -248,13 +249,13 @@ static struct obbyuser *obbyuser_create(struct obbysess *os, char *name,
 	ou->ou_name = name;
 	ou->ou_net6uid = net6uid;
 	ou->ou_color = color;
-	ou->ou_obbyuid = -1;
+	ou->ou_obbyuid = -1UL;
 	ou->ou_enctyped = 0;
 
 	return ou;
 }
 
-static struct obbyuser *obbyuser_find(struct obbysess *os, unsigned uid)
+static struct obbyuser *obbyuser_find(struct obbysess *os, unsigned long uid)
 {
 	int i;
 
@@ -276,12 +277,13 @@ static struct obbyuser *obbyuser_find_by_name(struct obbysess *os, char *name)
 	return 0;
 }
 
-static struct obbyuser *obbyuser_find_by_nid(struct obbysess *os, char *nid)
+static struct obbyuser *obbyuser_find_by_nid(struct obbysess *os,
+		unsigned long nid)
 {
 	int i;
 
 	for (i = 0; i < os->os_eusers; i++)
-		if (!strcmp(os->os_users[i]->ou_net6uid, nid))
+		if (os->os_users[i]->ou_net6uid == nid)
 			return os->os_users[i];
 
 	return 0;
@@ -290,7 +292,6 @@ static struct obbyuser *obbyuser_find_by_nid(struct obbysess *os, char *nid)
 static void obbyuser_free(struct obbyuser *ou)
 {
 	free(ou->ou_name);
-	free(ou->ou_net6uid);
 	free(ou);
 }
 
@@ -307,7 +308,8 @@ static void obbysess_free_users(struct obbysess *os)
 }
 
 static struct obbydoc *obbydoc_create(struct obbysess *os, char *name,
-		unsigned obbyuid, unsigned obbyuididx, unsigned nusers)
+		unsigned long obbyuid, unsigned long obbyuididx,
+		unsigned nusers)
 {
 	struct obbydoc *od;
 
@@ -364,11 +366,12 @@ static void obbysess_free_docs(struct obbysess *os)
 static int net6_client_join_handler(struct obbysess *os, char *args)
 {
 	struct obbyuser *ou;
-	char *color, *name, *net6uid;
-	int n, enc, oid, c;
+	char *color, *name;
+	unsigned long net6uid, oid, c;
+	int n, enc;
 
 	/* XXX: older versions of protocol will pass fewer fields */
-	n = sscanf(args, "%a[^:]:%a[^:]:%d:%d:%as\n",
+	n = sscanf(args, "%lx:%a[^:]:%x:%lx:%as\n",
 			&net6uid,
 			&name,
 			&enc,
@@ -385,8 +388,6 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 
 	ou = obbyuser_find_by_name(os, name);
 	if (ou) {
-		if (ou->ou_net6uid)
-			free(ou->ou_net6uid);
 		ou->ou_net6uid = net6uid;
 
 		free(name);
@@ -419,14 +420,16 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 static int net6_client_part_handler(struct obbysess *os, char *args)
 {
 	struct obbyuser *ou;
+	unsigned long nid;
 
-	ou = obbyuser_find_by_nid(os, args);
+	nid = strtoul(args, NULL, 16);
+	ou = obbyuser_find_by_nid(os, nid);
 	if (!ou) {
 		err(os, "user %s never existed\n", args);
 		return -1;
 	}
 
-	ou->ou_obbyuid = -1;
+	ou->ou_obbyuid = -1UL;
 	ou->ou_enctyped = 0;
 
 	obbysess_notify(os, OETYPE_USER_PARTED, .oe_username = ou->ou_name);
@@ -450,10 +453,11 @@ static int net6_client_part_handler(struct obbysess *os, char *args)
 static int obby_sync_usertable_user_handler(struct obbysess *os, char *args)
 {
 	struct obbyuser *ou;
-	char *color, *name, *net6uid;
-	int n, c;
+	char *color, *name;
+	unsigned long net6uid, c;
+	int n;
 
-	n = sscanf(args, "%a[^:]:%a[^:]:%as\n",
+	n = sscanf(args, "%lx:%a[^:]:%as\n",
 			&net6uid,
 			&name,
 			&color);
@@ -502,7 +506,7 @@ static int obby_sync_doclist_document_handler(struct obbysess *os, char *args)
 	int n;
 
 	/* XXX: older versions of protocol will pass fewer fields */
-	n = sscanf(args, "%d:%d:%a[^:]:%d:%as\n",
+	n = sscanf(args, "%x:%x:%a[^:]:%x:%as\n",
 			&obbyuid,
 			&obbyuididx,
 			&name,
@@ -583,7 +587,7 @@ static int obby_message_handler(struct obbysess *os, char *args)
 {
 	char *p = args;
 	struct obbyuser *ou;
-	int uid;
+	unsigned long uid;
 
 	if (!*p) {
 		err(os, "malformed message\n");
@@ -591,7 +595,7 @@ static int obby_message_handler(struct obbysess *os, char *args)
 		return -1;
 	}
 
-	uid = atoi(p);
+	uid = strtoul(p, NULL, 16);
 	ou = obbyuser_find(os, uid);
 
 	p = strchr(p, ':');
@@ -611,10 +615,10 @@ static int obby_message_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
-static int __obby_document_sync_init(struct obbysess *os, unsigned oid,
-		unsigned oididx, char *args)
+static int __obby_document_sync_init(struct obbysess *os, unsigned long oid,
+		unsigned long oididx, char *args)
 {
-	long len;
+	unsigned long len;
 
 	len = strtol(args, NULL, 16);
 	diag(os, "expecting document %d bytes long\n", len);
@@ -627,8 +631,8 @@ static int __obby_document_sync_init(struct obbysess *os, unsigned oid,
 	return 0;
 }
 
-static int __obby_document_sync_chunk(struct obbysess *os, unsigned oid,
-		unsigned oididx, char *args)
+static int __obby_document_sync_chunk(struct obbysess *os, unsigned long oid,
+		unsigned long oididx, char *args)
 {
 	char *p = strrchr(args, ':');
 
@@ -652,10 +656,10 @@ static int __obby_document_sync_chunk(struct obbysess *os, unsigned oid,
 static int obby_document_handler(struct obbysess *os, char *args)
 {
 	char *p, *what;
-	unsigned obbyuid, obbyuididx;
+	unsigned long obbyuid, obbyuididx;
 	int n;
 
-	n = sscanf(args, "%u %u:%a[^:]:%a[^\n]\n",
+	n = sscanf(args, "%lx %lx:%a[^:]:%a[^\n]\n",
 			&obbyuid,
 			&obbyuididx,
 			&what,
@@ -666,7 +670,7 @@ static int obby_document_handler(struct obbysess *os, char *args)
 		return -1;
 	}
 
-	diag(os, "got %s for [%d:%d]: %s\n", what, obbyuid, obbyuididx, p);
+	diag(os, "got %s for [%lx:%lx]: %s\n", what, obbyuid, obbyuididx, p);
 	if (!strcmp(what, "sync_init")) {
 		__obby_document_sync_init(os, obbyuid, obbyuididx, p);
 	} else if (!strcmp(what, "sync_chunk")) {

@@ -23,8 +23,8 @@ enum {
 struct obbyuser {
 	char *ou_name;
 	unsigned long ou_color;
-	char *ou_net6uid;
-	unsigned ou_obbyuid;
+	unsigned long ou_net6uid;
+	unsigned long ou_obbyuid;
 	unsigned ou_enctyped;
 };
 
@@ -33,8 +33,8 @@ struct obbyuser {
 struct obbydoc {
 	char *od_name;
 	char *od_encoding;
-	unsigned od_obbyuid;
-	unsigned od_obbyuididx;
+	unsigned long od_obbyuid;
+	unsigned long od_obbyuididx;
 	unsigned od_nusers;
 };
 
@@ -73,13 +73,13 @@ struct obbysess {
 	int os_type;
 	int os_state;
 	unsigned os_flags;
-	int os_proto;
+	long os_proto;
 	char *os_inbuf;
 	char *os_outbuf;
 	gnutls_session_t os_tlssess;
 	gnutls_anon_client_credentials_t os_anoncred;
 
-	int os_nitems; /* scratch: number of entries */
+	long os_nitems; /* scratch: number of entries */
 	int os_eusers; /* number of users known to us */
 	struct obbyuser *os_users[MAX_USERS];
 
