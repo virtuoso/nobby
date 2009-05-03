@@ -107,6 +107,8 @@ void obbysess_do(struct obbysess *os);
 
 void obbysess_join(struct obbysess *os, const char *nick, const char *color);
 
+void obbysess_subscribe(struct obbysess *os, const char *docname);
+
 void obbysess_enqueue_command(struct obbysess *os, const char *fmt, ...);
 
 #endif /* __COBBY_H__ */

@@ -38,6 +38,10 @@ static void obbysess_free_users(struct obbysess *os);
 static struct obbydoc *obbydoc_create(struct obbysess *os, char *name,
 		unsigned long obbyuid, unsigned long obbyuididx,
 		unsigned nusers);
+static struct obbydoc *obbydoc_find(struct obbysess *os, unsigned long oid,
+		unsigned long oididx);
+static struct obbydoc *obbydoc_find_by_name(struct obbysess *os,
+		const char *docname);
 static void obbydoc_free(struct obbydoc *od);
 
 static void __dbgout(struct obbysess *os, const char *fmt, ...)
@@ -348,6 +352,33 @@ static void obbysess_free_docs(struct obbysess *os)
 	os->os_edocs = 0;
 }
 
+static struct obbydoc *obbydoc_find(struct obbysess *os, unsigned long oid,
+		unsigned long oididx)
+{
+	int i;
+
+	for (i = 0; i < os->os_edocs; i++)
+		if (
+			os->os_docs[i]->od_obbyuid == oid &&
+			os->os_docs[i]->od_obbyuididx == oididx
+		   )
+			return os->os_docs[i];
+
+	return NULL;
+}
+
+static struct obbydoc *obbydoc_find_by_name(struct obbysess *os,
+		const char *docname)
+{
+	int i;
+
+	for (i = 0; i < os->os_edocs; i++)
+		if (!strcmp(os->os_docs[i]->od_name, docname))
+			return os->os_docs[i];
+
+	return NULL;
+}
+
 /*
  * -- proto command --
  * net6_client_join comes either in the 'sync' exchange or when a user
@@ -619,12 +650,17 @@ static int __obby_document_sync_init(struct obbysess *os, unsigned long oid,
 		unsigned long oididx, char *args)
 {
 	unsigned long len;
+	struct obbydoc *od;
+
+	od = obbydoc_find(os, oid, oididx);
+	if (!od)
+		return -1;
 
 	len = strtol(args, NULL, 16);
 	diag(os, "expecting document %d bytes long\n", len);
 
 	obbysess_notify(os, OETYPE_DOC_OPEN,
-			.oe_docname = "hmhm",
+			.oe_docname = od->od_name,
 			.oe_length = len
 			);
 
@@ -635,6 +671,7 @@ static int __obby_document_sync_chunk(struct obbysess *os, unsigned long oid,
 		unsigned long oididx, char *args)
 {
 	char *p = strrchr(args, ':');
+	struct obbydoc *od;
 
 	if (!p) {
 		err(os, "malformed obby_document command: %s\n", args);
@@ -642,11 +679,15 @@ static int __obby_document_sync_chunk(struct obbysess *os, unsigned long oid,
 		return -1;
 	}
 
-	/* the number that follow should mean something. probably. */
+	od = obbydoc_find(os, oid, oididx);
+	if (!od)
+		return -1;
+
+	/* the number that follows should mean something. probably. */
 	*p++ = 0;
 
 	obbysess_notify(os, OETYPE_DOC_GETCHUNK,
-			.oe_docname = "hmhm",
+			.oe_docname = od->od_name,
 			.oe_message = obby_unescape_string(args, -1)
 			);
 
@@ -1069,6 +1110,18 @@ void obbysess_do(struct obbysess *os)
 void obbysess_join(struct obbysess *os, const char *nick, const char *color)
 {
 	obbysess_enqueue_command(os, "net6_client_login:%s:%s\n", nick, color);
+}
+
+void obbysess_subscribe(struct obbysess *os, const char *docname)
+{
+	struct obbydoc *od;
+
+	od = obbydoc_find_by_name(os, docname);
+	if (!od)
+		return;
+
+	obbysess_enqueue_command(os, "obby_document:%lx %lx:subscribe:0\n",
+			od->od_obbyuid, od->od_obbyuididx);
 }
 
 void obbysess_set_notify_callback(struct obbysess *os,

@@ -42,6 +42,8 @@ void cmd_execute(char *cmdbuf, void *d)
 			} else if (!strncmp(&cmdbuf[1], "color ", 6)) {
 				free(G.color);
 				G.color = strdup(&cmdbuf[7]);
+			} else if (os && !strncmp(&cmdbuf[1], "subscribe ", 10)) {
+				obbysess_subscribe(os, &cmdbuf[11]);
 			} else if (
 					!strncmp(&cmdbuf[1], "connect ", 7) ||
 					!strncmp(&cmdbuf[1], "connect ", 8)
