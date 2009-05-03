@@ -142,7 +142,7 @@ void screen_init(void) {
 
 static void update_display(void)
 {
-	curs_set(0);
+	curs_set(1);
 	wrefresh(screen);
 	wrefresh(listwin);
 	wrefresh(dbgwin);
