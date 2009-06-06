@@ -63,6 +63,6 @@ void cmd_execute(char *cmdbuf, void *d)
 			break;
 	}
 
-	editor_killline(cmded, 0, 0, -1);
+	editor_clearline(cmded);
 }
 

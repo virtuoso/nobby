@@ -4,6 +4,10 @@
 struct editor {
 	WINDOW *e_win;
 	char **e_buf;
+	/* be careful with the concept of lines:
+	 *  - e_lines == amount of lines in the buffer (0 means empty)
+	 *  - e_curline == number of current line (0 means first line)
+	 */
 	unsigned e_lines;
 	unsigned e_curline;
 	unsigned e_curpos;

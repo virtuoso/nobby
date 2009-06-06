@@ -15,7 +15,7 @@ struct editor *editor_create(WINDOW *win, void *priv)
 	e->e_win = win;
 	e->e_buf = NULL;
 	e->e_lines = 0;
-	e->e_curline = 0;
+	e->e_curline = -1;
 	e->e_curpos = 0;
 	e->e_priv = priv;
 
@@ -31,6 +31,9 @@ void editor_destroy(struct editor *e)
 }
 
 #define MAXLINES 16384
+/*
+ * Change number of lines in editor's buffer by @delta
+ */
 int editor_realloclines(struct editor *e, int delta)
 {
 	int lines = e->e_lines + delta;
@@ -47,13 +50,15 @@ int editor_realloclines(struct editor *e, int delta)
 			if (e->e_buf[i])
 				free(e->e_buf[i]);
 
-	e->e_buf = realloc(e->e_buf, lines);
+	e->e_buf = realloc(e->e_buf, lines * sizeof(char *));
 	if (!e->e_buf)
 		return -1;
 
 	if (lines > e->e_lines)
 		for (i = e->e_lines; i < lines; i++)
 			e->e_buf[i] = NULL;
+
+	e->e_lines = lines;
 
 	return lines;
 }
@@ -63,12 +68,12 @@ int editor_addline(struct editor *e, int line, int pos, char *buf, unsigned f)
 	int minlen = pos + (buf ? strlen(buf) : 0) + 1;
 
 	/* check if the line exists */
-	if (!e->e_buf || line > e->e_lines)
-		if (editor_realloclines(e, line - e->e_lines) < 0)
+	if (!e->e_buf || line > e->e_lines - 1)
+		if (editor_realloclines(e, line - (e->e_lines - 1)) < 0)
 			return -1;
 
 	if (!e->e_buf[line]) {
-		e->e_buf[line] = realloc(e->e_buf[line], minlen);
+		e->e_buf[line] = malloc(minlen);
 		if (!e->e_buf[line])
 			return -1;
 
@@ -85,8 +90,29 @@ int editor_addline(struct editor *e, int line, int pos, char *buf, unsigned f)
 
 	if (buf)
 		memcpy(e->e_buf[line] + pos, buf, strlen(buf) + 1);
+	else
+		e->e_buf[line][0] = 0;
+
+	if (e->e_curline == -1)
+		e->e_curline = 0;
 
 	return 0;
+}
+
+int editor_addchunk(struct editor *e, int line, int pos, char *buf, unsigned f)
+{
+	char *p, *s = buf;
+
+	while ((p = strchr(s, '\n')) != NULL) {
+		*p = 0;
+		editor_addline(e, line++, 0, s, 0);
+		*p = '\n';
+		s = p + 1;
+	}
+
+	editor_addline(e, line++, 0, s, 0);
+
+	return strlen(buf);
 }
 
 int editor_killline(struct editor *e, int line, int pos, ssize_t len)
@@ -172,6 +198,9 @@ void editor_killword(struct editor *e)
 int editor_gotchar(struct editor *e, int ch)
 {
 	char s[] = { ch, 0 };
+
+	if (e->e_curline == -1)
+		return -1;
 
 	switch (ch) {
 		case ERR:
