@@ -48,6 +48,7 @@ enum {
 };
 
 extern struct editor *cmded;
+extern struct editor *texted;
 
 struct global_conf {
 	char *nick;

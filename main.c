@@ -11,11 +11,12 @@
 
 static WINDOW *mainwnd;
 static WINDOW *screen;
+static WINDOW *edwin;
 static WINDOW *dbgwin;
 static WINDOW *listwin;
 static WINDOW *cmdwin;
 
-struct editor *cmded;
+struct editor *cmded, *texted;
 
 static struct session *sessions[MAX_SESSIONS];
 static int nsessions, cursession;
@@ -124,6 +125,8 @@ void screen_init(void) {
 	layout_redo();
 	screen = newwin(layout.chat_h, layout.chat_w, layout.chat_y,
 			layout.chat_x);
+	edwin = newwin(layout.chat_h, layout.chat_w, layout.chat_y,
+			layout.chat_x);
 	listwin = newwin(layout.lists_h, layout.lists_w, layout.lists_y,
 			layout.lists_x);
 	dbgwin = newwin(layout.debug_h, layout.debug_w, layout.debug_y,
@@ -200,6 +203,7 @@ static int __obby_notify_callback(void *priv, struct obbyevent *oe)
 
 		case OETYPE_DOC_GETCHUNK:
 			__chatout("+++ HERE GOES:\n%s\n", oe->oe_message);
+			editor_addchunk(texted, 0, 0, oe->oe_message, 0);
 			break;
 
 		case OETYPE_CHAT_MESSAGE:
@@ -404,6 +408,10 @@ int main(int argc, char **argv)
 
 	cmded = editor_create(cmdwin, NULL);
 	if (!cmded)
+		exit(EXIT_FAILURE);
+
+	texted = editor_create(edwin, NULL);
+	if (!texted)
 		exit(EXIT_FAILURE);
 
 	editor_addline(cmded, 0, 0, NULL, 0);
