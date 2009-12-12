@@ -265,8 +265,13 @@ struct session *session_create(int type, ...)
 	return s;
 }
 
-void session_destroy(struct session *s)
+void session_destroy(int sn)
 {
+	struct session *s = sessions[sn];
+
+	if (!s)
+		return;
+
 	switch (s->s_type) {
 		case STYPE_OBBY:
 			obbysess_destroy(s->s_obby);
@@ -275,6 +280,9 @@ void session_destroy(struct session *s)
 		default:
 			break;
 	}
+
+	free(s);
+	sessions[sn] = NULL;
 }
 
 struct session *session_current(void)
@@ -304,7 +312,9 @@ int session_do(struct session *s)
 			if (s->s_obby->os_state == OSSTATE_SHOOKHANDS) {
 				obbysess_join(s->s_obby, G.nick, G.color);
 				G.state = NSTATE_CONNECTED;
-			}
+			} else if (s->s_obby->os_state == OSSTATE_ERROR)
+				return -1;
+
 			break;
 
 		default:
@@ -318,8 +328,13 @@ void sessions_do(void)
 {
 	int n;
 
-	for (n = 0; n < nsessions; n++)
-		(void)session_do(sessions[n]);
+	for (n = 0; n < nsessions; n++) {
+		if (!sessions[n])
+			continue;
+
+		if (session_do(sessions[n]))
+			session_destroy(n);
+	}
 }
 
 static const struct option options[] = {
@@ -357,7 +372,6 @@ static void usage(const char *msg, int exit_code)
 
 int main(int argc, char **argv)
 {
-	struct session *s;
 	int ch, loptidx, c, n = 0;
 	struct pollfd fds[MAX_SESSIONS];
 
@@ -426,6 +440,9 @@ int main(int argc, char **argv)
 
 		if (!n) {
 			for (c = 0; c < nsessions; c++) {
+				if (!sessions[c])
+					continue;
+
 				fds[c].fd = session_get_fd(c);
 				fds[c].events = POLLIN;
 			}
@@ -437,8 +454,8 @@ int main(int argc, char **argv)
 	}
 	screen_end();
 
-	session_destroy(s);
+	for (c = 0; c < nsessions; c++)
+		session_destroy(c);
 
 	return 0;
 }
-

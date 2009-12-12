@@ -440,6 +440,25 @@ static int net6_client_join_handler(struct obbysess *os, char *args)
 	return 0;
 }
 
+static int net6_login_failed_handler(struct obbysess *os, char *args)
+{
+	unsigned long net6uid;
+	int n;
+
+	n = sscanf(args, "%lx\n", &net6uid);
+	if (n != 1) {
+		err(os, "malformed login failed command: %d, %s\n", n, args);
+		os->os_state = OSSTATE_ERROR;
+		return -1;
+	}
+
+	/* on the other hand, we have to close this session anyway */
+	os->os_state = OSSTATE_ERROR;
+	err(os, "login failed\n");
+
+	return 0;
+}
+
 /*
  * -- proto command --
  * net6_client_part is to indicate that a user has parted
@@ -733,6 +752,7 @@ static struct obby_command cmdlist[] = {
 	OBBY_CMD(obby_welcome),
 	OBBY_CMD(net6_encryption),
 	OBBY_CMD(net6_encryption_begin),
+	OBBY_CMD(net6_login_failed),
 	OBBY_CMD(net6_ping),
 	OBBY_CMD(obby_sync_init),
 	OBBY_CMD(net6_client_join),

@@ -37,7 +37,7 @@ enum {
 };
 
 struct session *session_create(int type, ...);
-void session_destroy(struct session *s);
+void session_destroy(int sn);
 struct session *session_current(void);
 
 extern int nobby_state;
