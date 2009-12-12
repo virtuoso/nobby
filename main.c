@@ -439,15 +439,18 @@ int main(int argc, char **argv)
 		editor_gotchar(cmded, ch);
 
 		if (!n) {
-			for (c = 0; c < nsessions; c++) {
+			int s;
+
+			for (c = 0, s = 0; c < nsessions; c++) {
 				if (!sessions[c])
 					continue;
 
-				fds[c].fd = session_get_fd(c);
-				fds[c].events = POLLIN;
+				fds[s].fd = session_get_fd(c);
+				fds[s++].events = POLLIN;
 			}
-			fds[c].fd = 0;
-			fds[c].events = POLLIN;
+
+			fds[s].fd = 0;
+			fds[s].events = POLLIN;
 			n = poll(fds, c + 1, 100);
 		} else
 			n--;
