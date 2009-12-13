@@ -230,6 +230,11 @@ int editor_gotchar(struct editor *e, int ch)
 			editor_clearline(e);
 			break;
 
+	case 0x0c: /* ^L */
+		case KEY_RESIZE:
+			screen_resize();
+			break;
+
 		default:
 			waddch(e->e_win, ch);
 			wrefresh(e->e_win);

@@ -1,6 +1,8 @@
 #ifndef __NOBBY_UI_H__
 #define __NOBBY_UI_H__
 
+void screen_resize(void);
+
 struct editor {
 	WINDOW *e_win;
 	char **e_buf;

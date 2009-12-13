@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/poll.h>
+#include <errno.h>
 #include <getopt.h>
 #include <gnutls/gnutls.h>
 #include "curses.h"
@@ -58,6 +59,9 @@ static struct layout layout;
 void layout_redo(void)
 {
 	int w = COLS, h = LINES;
+
+	layout.w = w;
+	layout.h = h;
 
 	layout.cmd_x = 0;
 	layout.cmd_w = w;
@@ -145,12 +149,35 @@ void screen_init(void) {
 
 static void update_display(void)
 {
-	curs_set(1);
+	curs_set(0);
 	wrefresh(screen);
 	wrefresh(listwin);
 	wrefresh(dbgwin);
+	curs_set(1);
 	wrefresh(cmdwin);
 	refresh();
+}
+
+void screen_resize(void)
+{
+	/*if (getmaxy(stdscr) < 16 || getmaxx(stdscr) < 80)
+	  abort();*/
+	layout_redo();
+
+	wresize(screen, layout.chat_h, layout.chat_w);
+	wmove(screen, layout.chat_y, layout.chat_x);
+	wresize(edwin, layout.chat_h, layout.chat_w);
+	wmove(edwin, layout.chat_y, layout.chat_x);
+
+	wresize(listwin, layout.lists_h, layout.lists_w);
+	wmove(listwin, layout.lists_y, layout.lists_x);
+	wresize(dbgwin, layout.debug_h, layout.debug_w);
+	wmove(dbgwin, layout.debug_y, layout.debug_x);
+	wresize(cmdwin, layout.cmd_h, layout.cmd_w);
+	wmove(cmdwin, layout.cmd_y, layout.cmd_x);
+
+	update_display();
+	__dbgout("geometry: w=%d h=%d\n", layout.w, layout.h);
 }
 
 void screen_end(void) {
@@ -452,6 +479,11 @@ int main(int argc, char **argv)
 			fds[s].fd = 0;
 			fds[s].events = POLLIN;
 			n = poll(fds, c + 1, 100);
+			if (n == -1) {
+				if (errno != EINTR)
+					__dbgout("poll failed: %m");
+				n = 0;
+			}
 		} else
 			n--;
 	}
